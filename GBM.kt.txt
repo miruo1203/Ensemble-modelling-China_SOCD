@@ -1,0 +1,76 @@
+library(caret)
+library(dplyr)
+
+# Function for model evaluation
+fun.acc <- function(observed, predicted) {
+  R2 <- 1 - sum((observed - predicted)^2) / sum((observed - mean(observed))^2)
+  SEP2 <- mean((observed - predicted)^2)
+  SEP <- sqrt(SEP2)
+  bias <- mean(predicted) - mean(observed)
+  SEP2c <- sum(((predicted - bias - observed)^2) / length(observed))
+  SEPc <- sqrt(SEP2c)
+  RPD <- sd(observed) / SEP
+  IQ <- quantile(observed, 0.75) - quantile(observed, 0.25)
+  RPIQ <- IQ / SEP
+  mx <- mean(observed)
+  my <- mean(predicted)
+  s2x <- var(observed)
+  s2y <- var(predicted)
+  sxy <- mean((observed - mx) * (predicted - my))
+  ccc <- 2 * sxy / (s2x + s2y + (mx - my)^2)
+  gf <- data.frame(R2 = R2, concordance = ccc, RMSE = SEP, bias = bias, RPD = RPD, RPIQ = RPIQ, row.names = NULL)
+  return(gf)
+}
+
+# Load data
+setwd("C:/Users/Cat/Desktop")
+data <- read.csv("Cn_BD_1.csv")
+data$CV_LD <- as.factor(data$CV_LD)
+
+# Split data into training and validation sets
+profiles <- split(data, data$profile_id)  
+profile_ids <- names(profiles)  
+
+set.seed(666)  
+train_profile_ids <- sample(profile_ids, size = round(length(profile_ids) * 0.75))  
+train_data <- do.call(rbind, profiles[train_profile_ids])  
+
+validation_profile_ids <- setdiff(profile_ids, train_profile_ids)  
+validation_data <- do.call(rbind, profiles[validation_profile_ids])  
+
+row.cal <- which(data$profile_id %in% train_profile_ids)
+
+gbmGrid <- expand.grid(
+  interaction.depth = c(20, 25, 30, 35, 40, 45, 47, 50),
+  n.trees = c(500),
+  shrinkage = c(0.06, 0.05, 0.04),
+  n.minobsinnode = c(10)
+)
+
+
+gbm_input_cal <- data[row.cal, ]
+gbm_input_val <- data[-row.cal, ]
+
+gbm_model <- train(
+  BD ~ .,
+  data = gbm_input_cal,
+  method = "gbm",
+  trControl = trainControl(method = "cv", number = 5, savePredictions = TRUE),
+  tuneGrid = gbmGrid,
+  metric = "RMSE"
+)
+
+
+gbm_cv_predictions <- gbm_model$pred
+gbm_cv_predictions$pred <- as.numeric(gbm_cv_predictions$pred)
+
+cv_evaluation <- fun.acc(gbm_cv_predictions$obs, gbm_cv_predictions$pred)
+
+
+write.csv(gbm_cv_predictions, file = "GBM_CV_Predictions.csv", row.names = FALSE)
+
+gbm_train_predictions <- data.frame(Actual = gbm_input_cal$BD, Predicted = predict(gbm_model, newdata = gbm_input_cal[,-which(names(gbm_input_cal) == "BD")]))
+gbm_train_predictions <- gbm_train_predictions[order(row.cal),]  
+write.csv(gbm_train_predictions, file = "GBM_Train_Predictions.csv", row.names = FALSE)
+
+
