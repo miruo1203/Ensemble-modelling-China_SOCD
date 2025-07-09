@@ -1,0 +1,68 @@
+# Load necessary packages
+library(caret)
+library(dplyr)
+
+# Function for model evaluation
+fun.acc <- function(observed, predicted) {
+  R2 <- 1 - sum((observed - predicted)^2) / sum((observed - mean(observed))^2)
+  SEP2 <- mean((observed - predicted)^2)
+  SEP <- sqrt(SEP2)
+  bias <- mean(predicted) - mean(observed)
+  SEP2c <- sum(((predicted - bias - observed)^2) / length(observed))
+  SEPc <- sqrt(SEP2c)
+  RPD <- sd(observed) / SEP
+  IQ <- quantile(observed, 0.75) - quantile(observed, 0.25)
+  RPIQ <- IQ / SEP
+  mx <- mean(observed)
+  my <- mean(predicted)
+  s2x <- var(observed)
+  s2y <- var(predicted)
+  sxy <- mean((observed - mx) * (predicted - my))
+  ccc <- 2 * sxy / (s2x + s2y + (mx - my)^2)
+  gf <- data.frame(R2 = R2, concordance = ccc, RMSE = SEP, bias = bias, RPD = RPD, RPIQ = RPIQ, row.names = NULL)
+  return(gf)
+}
+
+# Load data
+setwd("C:/Users/Cat/Desktop")
+data <- read.csv("Cn_BD_1.csv")
+data$CV_LD <- as.factor(data$CV_LD)
+
+
+# Split data into training and validation sets
+profiles <- split(data, data$profile_id)  
+profile_ids <- names(profiles)  
+
+set.seed(666)  
+train_profile_ids <- sample(profile_ids, size = round(length(profile_ids) * 0.75))  
+train_data <- do.call(rbind, profiles[train_profile_ids])  
+
+validation_profile_ids <- setdiff(profile_ids, train_profile_ids)  
+validation_data <- do.call(rbind, profiles[validation_profile_ids])  
+
+
+row.cal <- which(data$profile_id %in% train_profile_ids)
+trControl <- trainControl(method = "cv", number = 5, savePredictions = TRUE)
+cubist_input_cal <- data[row.cal, ]
+cubist_input_val <- data[-row.cal, ]
+
+# parameter grid
+cubistGrid <- expand.grid(committees = c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100), neighbors = c(1:6))
+
+Cubist_model <- train(
+  BD ~ .,
+  data = cubist_input_cal,
+  method = "cubist",
+  trControl = trControl,
+  savePredictions = TRUE,
+  tuneGrid = cubistGrid
+)
+
+print(Cubist_model)
+
+
+cv_predictions <- Cubist_model$pred
+
+
+
+write.csv(cv_predictions, file = "cubist_cross_validation_predictions.csv", row.names = FALSE)
