@@ -1,16 +1,29 @@
-# --- Initialization and Setup ---
-rm(list = ls())
-set.seed(666)
 
-# Load required libraries
-library(caret)
-library(kernlab)
-library(ranger)
-library(gbm)
-library(Cubist)
-library(dplyr)
+library(stats) 
 
-# Model evaluation function
+setwd("C:/Users/Cat/Desktop")
+data <- read.csv("EM.csv")
+
+
+merged_data <- data.frame(
+  y_EM = data$obs,
+  y_SVM = data$SVM_pred,
+  y_Cubist = data$Cubist_pred,
+  y_RF = data$RF_pred,
+  y_GBM = data$GBM_pred
+)
+
+
+model <- lm(y_EM ~ y_SVM + y_Cubist + y_RF + y_GBM, data = merged_data)
+
+
+coefficients <- coef(model)
+
+
+print(coefficients)
+
+
+# Function for model evaluation
 fun.acc <- function(observed, predicted) {
   R2 <- 1 - sum((observed - predicted)^2) / sum((observed - mean(observed))^2)
   SEP2 <- mean((observed - predicted)^2)
@@ -27,87 +40,28 @@ fun.acc <- function(observed, predicted) {
   s2y <- var(predicted)
   sxy <- mean((observed - mx) * (predicted - my))
   ccc <- 2 * sxy / (s2x + s2y + (mx - my)^2)
-  return(data.frame(R2 = R2, CCC = ccc, RMSE = SEP, Bias = bias, RPD = RPD, RPIQ = RPIQ))
+  gf <- data.frame(R2 = R2, concordance = ccc, RMSE = SEP, bias = bias, RPD = RPD, RPIQ = RPIQ, row.names = NULL)
+  return(gf)
 }
 
-# --- Load and preprocess data ---
-setwd("C:/Users/Cat/Desktop")  # Change to your working directory
-data <- read.csv("Cn_BD_1.csv")
-data$CV_LD <- as.factor(data$CV_LD)
 
-# One-hot encoding for categorical variable
-dummy_vars <- dummyVars("~ CV_LD", data = data)
-data_encoded <- predict(dummy_vars, newdata = data)
-model_data <- cbind(data_encoded, data[c(2:9, 11, 12, 13, 14, 15)])
+data2 <- read.csv("EM_data.csv")
 
-# Split into training and validation sets by profile_id
-profiles <- split(model_data, data$profile_id)
-profile_ids <- names(profiles)
-train_ids <- sample(profile_ids, round(length(profile_ids) * 0.75))
-row.cal <- which(data$profile_id %in% train_ids)
-train_data <- model_data[row.cal, ]
-test_data <- model_data[-row.cal, ]
 
-# Define training control
-trControl <- trainControl(method = "cv", number = 5, savePredictions = TRUE)
+em_pred <- (-0.009063905 * data2$SVM_pred) + (0.333361766 * data2$Cubist_pred) + (0.205268549 * data2$RF_pred) + (0.520102411 * data2$GBM_pred) - 0.068713677
 
-# --- 1. SVM ---
-svm_grid <- expand.grid(sigma = 0.1, C = 10)
-svm_model <- train(BD ~ ., data = train_data, method = "svmRadial", tuneGrid = svm_grid, trControl = trControl)
-svm_pred <- predict(svm_model, newdata = test_data)
 
-# --- 2. Random Forest ---
-rf_grid <- expand.grid(mtry = 3:5, min.node.size = 5, splitrule = "variance")
-rf_model <- train(BD ~ ., data = train_data, method = "ranger", trControl = trControl, tuneGrid = rf_grid)
-rf_pred <- predict(rf_model, newdata = test_data)
+evaluation <- fun.acc(data2$obs, em_pred)
 
-# --- 3. GBM ---
-gbm_grid <- expand.grid(interaction.depth = c(30, 40), n.trees = 500, shrinkage = 0.05, n.minobsinnode = 10)
-gbm_model <- train(BD ~ ., data = train_data, method = "gbm", trControl = trControl, tuneGrid = gbm_grid, verbose = FALSE)
-gbm_pred <- predict(gbm_model, newdata = test_data)
+result <- data.frame(Real = data2$obs, Predicted = em_pred)
 
-# --- 4. Cubist ---
-cubist_grid <- expand.grid(committees = c(50, 100), neighbors = 3:5)
-cubist_model <- train(BD ~ ., data = train_data, method = "cubist", tuneGrid = cubist_grid, trControl = trControl)
-cubist_pred <- predict(cubist_model, newdata = test_data)
 
-# --- 5. Ensemble Model (EM) ---
-obs <- test_data$BD
-EM_data <- data.frame(
-  obs = obs,
-  SVM_pred = svm_pred,
-  RF_pred = rf_pred,
-  GBM_pred = gbm_pred,
-  Cubist_pred = cubist_pred
-)
+result$R2 <- evaluation$R2
+result$Concordance <- evaluation$concordance
+result$RMSE <- evaluation$RMSE
+result$Bias <- evaluation$bias
+result$RPD <- evaluation$RPD
+result$RPIQ <- evaluation$RPIQ
 
-em_lm <- lm(obs ~ SVM_pred + RF_pred + GBM_pred + Cubist_pred, data = EM_data)
-em_pred <- predict(em_lm, newdata = EM_data)
 
-# --- Model evaluation ---
-eval_svm <- fun.acc(obs, svm_pred)
-eval_rf <- fun.acc(obs, rf_pred)
-eval_gbm <- fun.acc(obs, gbm_pred)
-eval_cubist <- fun.acc(obs, cubist_pred)
-eval_em <- fun.acc(obs, em_pred)
-
-# --- Print evaluation results ---
-cat("\nSVM Performance:\n"); print(eval_svm)
-cat("\nRF Performance:\n"); print(eval_rf)
-cat("\nGBM Performance:\n"); print(eval_gbm)
-cat("\nCubist Performance:\n"); print(eval_cubist)
-cat("\nEM (Ensemble Model) Performance:\n"); print(eval_em)
-
-# --- Export predictions ---
-results_all <- data.frame(
-  obs = obs,
-  SVM_pred = svm_pred,
-  RF_pred = rf_pred,
-  GBM_pred = gbm_pred,
-  Cubist_pred = cubist_pred,
-  EM_pred = em_pred
-)
-write.csv(results_all, "All_Model_Predictions.csv", row.names = FALSE)
-
-# --- Output ensemble model coefficients ---
-cat("\nEM model coefficients:\n"); print(coef(em_lm))
+write.csv(result, file = "model_validation_result.csv", row.names = FALSE)
