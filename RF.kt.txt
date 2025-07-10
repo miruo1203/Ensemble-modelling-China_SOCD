@@ -1,8 +1,7 @@
-# 加载必要的包
+# Load necessary packages
 library(ranger)
 library(caret)
 library(dplyr)
-
 
 # Function for model evaluation
 fun.acc <- function(observed, predicted) {
@@ -33,7 +32,7 @@ fun.acc <- function(observed, predicted) {
   return(gf)
 }
 
-# FRFS function
+# FRFS (Feature Ranking and Forward Selection) function
 FRFS <- function(data, var.res, method = "rf", early.stop = NULL) {
   require(caret)
   require(ranger)
@@ -96,7 +95,6 @@ FRFS <- function(data, var.res, method = "rf", early.stop = NULL) {
   return(list(var.order = var.choose, var.final = var.final, RMSE = RMSE.all))
 }
 
-
 # Load data
 setwd("C:/Users/Cat/Desktop")
 data <- read.csv("Cn_BD_1.csv")
@@ -116,12 +114,14 @@ validation_data <- do.call(rbind, profiles[validation_profile_ids])
 # Define row.cal
 row.cal <- which(data$profile_id %in% train_profile_ids)
 
-
+# Create training and validation sets
 RF_input_cal <- data[row.cal, ]
 RF_input_val <- data[-row.cal, ]
 
+# Define parameter grid
 param_grid <- expand.grid(mtry = c(1:5), min.node.size = c(1:10), splitrule = "variance")
 
+# Perform cross-validation and parameter tuning on the pre-grouped training set
 RF_model_cal <- train(
   BD ~ .,
   data = RF_input_cal,
@@ -130,27 +130,30 @@ RF_model_cal <- train(
   tuneGrid = param_grid,
 )
 
+# Fit final model on entire training set
 rf_final <- ranger(
   BD ~ .,
   data = train_data,
   num.trees = 500,
-  mtry = RF_model_cal$bestTune$mtry, # 使用交叉验证选择的最佳参数
+  mtry = RF_model_cal$bestTune$mtry, # Use best parameters from cross-validation
   min.node.size = RF_model_cal$bestTune$min.node.size,
   splitrule = RF_model_cal$bestTune$splitrule,
   importance = 'permutation'
 )
 
+# Make predictions on validation set
 val.df.BD <- data.frame(obs = data$BD[-row.cal], pred = predict(rf_final, data[-row.cal,]))
 
+# Evaluate model
 fun.acc(val.df.BD$obs, val.df.BD$pred)
 
+# Create dataframe with observed and predicted values
 validation_results <- data.frame(obs = data$BD[-row.cal], pred = predict(rf_final, data[-row.cal,]))
 
+# Write validation data with predictions to CSV file
 write.csv(validation_results, file = "RF_validation_results.csv", row.names = FALSE) 
 
-
-# FRFS 
-
+# FRFS (Feature Ranking and Forward Selection)
 frfs <- FRFS(data[, c(2, 3:15)], var.res = "BD", early.stop = TRUE)
 
 var.sel <- which(colnames(data) %in% frfs$var.order)
@@ -163,10 +166,26 @@ val.df.BD <- data.frame(obs = data$BD[-row.cal], pred = predict(rf_frfs, data[-r
 
 fun.acc(val.df.BD$obs, val.df.BD$prediction)  
 
+# Create dataframe with observed and predicted values for training set
 train_results_frfs <- data.frame(obs = data$BD[row.cal], pred = predict(rf_frfs, data[row.cal, var.sel]))
 
+# Write training data with predictions to CSV file
 write.csv(train_results_frfs, file = "RF_FRFS_Cn_train_results.csv", row.names = FALSE) 
 
+# Create dataframe with observed and predicted values for validation set
 validation_results_frfs <- data.frame(obs = data$BD[-row.cal], pred = predict(rf_frfs, data[-row.cal, var.sel]))
 
+# Write validation data with predictions to CSV file
 write.csv(validation_results_frfs, file = "RF_RFFS_Cn_validation_results.csv", row.names = FALSE) 
+
+# Load new data (missing data)
+data3 <- read.csv("Cn_BD_Lost.csv") 
+
+# Make predictions using the model
+predictions <- predict(rf_final, data = data3)
+
+# Create dataframe with predictions
+prediction_results <- data.frame(obs = NA, pred = predictions)
+
+# Write prediction results to CSV file
+write.csv(prediction_results, file = "RF_final_prediction_results.csv", row.names = FALSE)
