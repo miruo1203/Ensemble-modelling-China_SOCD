@@ -1,3 +1,4 @@
+# Load necessary packages
 library(caret)
 library(dplyr)
 
@@ -38,8 +39,10 @@ train_data <- do.call(rbind, profiles[train_profile_ids])
 validation_profile_ids <- setdiff(profile_ids, train_profile_ids)  
 validation_data <- do.call(rbind, profiles[validation_profile_ids])  
 
+# Define row.cal
 row.cal <- which(data$profile_id %in% train_profile_ids)
 
+# Define larger GBM parameter grid
 gbmGrid <- expand.grid(
   interaction.depth = c(20, 25, 30, 35, 40, 45, 47, 50),
   n.trees = c(500),
@@ -47,10 +50,11 @@ gbmGrid <- expand.grid(
   n.minobsinnode = c(10)
 )
 
-
+# Create training and validation sets
 gbm_input_cal <- data[row.cal, ]
 gbm_input_val <- data[-row.cal, ]
 
+# Create GBM model
 gbm_model <- train(
   BD ~ .,
   data = gbm_input_cal,
@@ -60,17 +64,33 @@ gbm_model <- train(
   metric = "RMSE"
 )
 
-
+# Get cross-validation predictions
 gbm_cv_predictions <- gbm_model$pred
 gbm_cv_predictions$pred <- as.numeric(gbm_cv_predictions$pred)
 
+# Reorder cross-validation results according to training set order
+gbm_cv_predictions <- gbm_cv_predictions[order(gbm_cv_predictions$rowIndex),]
+
+# Calculate cross-validation R2, RMSE and CCC
 cv_evaluation <- fun.acc(gbm_cv_predictions$obs, gbm_cv_predictions$pred)
 
+# Add R2, RMSE and CCC to cross-validation results
+gbm_cv_predictions$R2 <- cv_evaluation$R2
+gbm_cv_predictions$RMSE <- cv_evaluation$RMSE
+gbm_cv_predictions$CCC <- cv_evaluation$concordance
 
+# Export cross-validation results to CSV file
 write.csv(gbm_cv_predictions, file = "GBM_CV_Predictions.csv", row.names = FALSE)
 
+# Export training set actual and predicted values
 gbm_train_predictions <- data.frame(Actual = gbm_input_cal$BD, Predicted = predict(gbm_model, newdata = gbm_input_cal[,-which(names(gbm_input_cal) == "BD")]))
-gbm_train_predictions <- gbm_train_predictions[order(row.cal),]  
+gbm_train_predictions <- gbm_train_predictions[order(row.cal),]  # Reorder according to training set order
 write.csv(gbm_train_predictions, file = "GBM_Train_Predictions.csv", row.names = FALSE)
 
-
+# Export validation set actual and predicted values with R2, RMSE and CCC
+gbm_test_predictions <- data.frame(Actual = gbm_input_val$BD, Predicted = predict(gbm_model, newdata = gbm_input_val[,-which(names(gbm_input_val) == "BD")]))
+test_evaluation <- fun.acc(gbm_test_predictions$Actual, gbm_test_predictions$Predicted)
+gbm_test_predictions$R2 <- test_evaluation$R2
+gbm_test_predictions$RMSE <- test_evaluation$RMSE
+gbm_test_predictions$CCC <- test_evaluation$concordance
+write.csv(gbm_test_predictions, file = "GBM_Test_Predictions.csv", row.names = FALSE)
