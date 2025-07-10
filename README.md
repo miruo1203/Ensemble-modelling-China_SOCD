@@ -2,4 +2,5 @@ This study presents an open-source R implementation of an ensemble machine learn
 
 For detailed implementation, see the individual model scripts and ensemble integration code.
 Chen, Z., Chen, L., Lu, R., Lou, Z., Zhou, F., Jin, Y., Xue, J., Guo, H., Wang, Z., Wang, Y., Liu, F., Song, X., Zhang, G., Su, Y., Ye, S., Shi, Z., & Chen, S. (2025). A national soil organic carbon density dataset (2010-2024) in China using ensemble modelling based pedotransfer functions [Data set]. Zenodo. https://doi.org/10.5281/zenodo.15851730
+
 Chen, Z., Xue, J., Wang, Z., Zhou, Y., Deng, X., Liu, F., Song, X., Zhang, G., Su, Y., Zhu, P., Shi, Z., and Chen, S.: Ensemble modelling-based pedotransfer functions for predicting soil bulk density in China, Geoderma, 448, 116969, https://doi.org/10.1016/j.geoderma.2024.116969, 2024.
