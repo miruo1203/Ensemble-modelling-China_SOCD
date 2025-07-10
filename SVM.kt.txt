@@ -1,8 +1,7 @@
+# 加载必要的包
 library(kernlab)
 library(caret)
 library(dplyr) 
-
-
 # Function for model evaluation
 fun.acc <- function(observed, predicted) {
   # Coefficient of determination (explained variance)
@@ -38,11 +37,13 @@ setwd("C:/Users/Cat/Desktop")
 data <- read.csv("Cn_BD_1.csv")
 data$CV_LD <- as.factor(data$CV_LD)
 
-#one-hot
+# 使用 dummyVars 函数进行 one-hot 编码
 dummy_vars <- dummyVars("~ CV_LD", data = data)
 
+# 转换数据集并添加编码变量
 data_encoded <- predict(dummy_vars, newdata = data)
 
+# 构建 svm_input
 svm_input <- cbind(data_encoded, data[c(2:9,11,12,13,14,15)])
 
 
@@ -57,16 +58,20 @@ train_data <- do.call(rbind, profiles[train_profile_ids])
 
 validation_profile_ids <- setdiff(profile_ids, train_profile_ids)  
 validation_data <- do.call(rbind, profiles[validation_profile_ids])  
-
+# 定义 row.cal
 row.cal <- which(data$profile_id %in% train_profile_ids)
 
+# 定义 SVM 的参数网格
 SVMGrid <- expand.grid(sigma = c(0.1), C = c(10))
 
+# 定义训练控制
 trControl <- trainControl(method = "cv", number = 5, savePredictions = TRUE)
 
+# 创建训练集和验证集
 svm_input_cal <- svm_input[row.cal, ]
 svm_input_val <- svm_input[-row.cal, ]
 
+# 创建 SVM 模型
 SVM_model <- train(
   BD ~ .,
   data = svm_input_cal,
@@ -76,8 +81,42 @@ SVM_model <- train(
   savePredictions = TRUE
 )
 
-
+# 打印 SVM 模型结果
 print(SVM_model)
 
+# 从训练对象中获取交叉验证的预测值和实际值
+svm_predictions <- SVM_model$pred
 
+# 按照训练集的顺序对交叉验证结果重新排序
+svm_predictions <- svm_predictions[order(svm_predictions$rowIndex),]
+
+# 导出交叉验证结果
 write.csv(svm_predictions, file = "SVM_CV_Predictions.csv", row.names = FALSE)
+
+# 导出训练集真实值和预测值
+SVM_predictions_train <- data.frame(Actual = svm_input_cal$BD, Predicted = predict(SVM_model, newdata = svm_input_cal[,-which(names(svm_input_cal) == "BD")]))
+write.csv(SVM_predictions_train, file = "SVM_Train_Predictions.csv", row.names = FALSE)
+
+# 导出验证集真实值和预测值
+SVM_predictions_test <- data.frame(Actual = svm_input_val$BD, Predicted = predict(SVM_model, newdata = svm_input_val[,-which(names(svm_input_val) == "BD")]))
+write.csv(SVM_predictions_test, file = "SVM_Test_Predictions.csv", row.names = FALSE)
+
+## 加载新数据
+data3 <- read.csv("Cn_BD_Lost.csv")
+data3$CV_LD <- as.factor(data3$CV_LD)
+
+# 使用相同的 one-hot 编码处理方法对新数据进行处理
+data3_encoded <- predict(dummy_vars, newdata = data3)
+
+# 合并处理后的新数据
+svm_input_new <- cbind(data3_encoded, data3[c(1:7, 9:13)])
+
+# 使用模型进行预测
+predictions <- predict(SVM_model, newdata = svm_input_new)
+
+# 将预测结果添加到新数据中作为新的 BD 列
+data3$BD <- predictions
+
+# 将预测结果写入 CSV 文件
+write.csv(data3, file = "SVM_final_prediction_results.csv", row.names = FALSE)
+
